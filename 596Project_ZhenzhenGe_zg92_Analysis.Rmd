@@ -1,0 +1,236 @@
+---
+title: "596Project_ZhenzhenGe_zg92_Analysis"
+author: "Zhenzhen Ge"
+date: "11/29/2016"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(faraway)
+library(tidyverse)
+library(rvest)
+library(stringr)
+library(gdata)
+library(coin)
+```
+
+
+
+```{r, echo=TRUE} 
+data_raw <- read.csv("Data/rawdata.csv")
+
+```
+
+
+```{r}
+## Permutation test to see whether income distribution difference exists
+W <- data_raw$Percap.Income[c(1:2,13:14,21:22,25,27:28,30:31,33:37,39:40,44,46:48,51)]
+E <- data_raw$Percap.Income[c(3:12,15:20,23:24,26,29,32,38,41:43,45,49:50)]
+DV <- c(W,E)
+IV <- factor(rep(c("W", "E"), c(length(W), length(E))))
+perm.test(DV ~ IV, paired=FALSE, alternative="two.sided", exact=TRUE)$p.value
+```
+
+
+```{r, echo=TRUE} 
+## Glance at the data
+hist(data_raw$Percap.Income, main = "Histogram of Percap.Income", xlab= "Income", col = "cadetblue1",breaks = 15)
+hist(data_raw$BA.Rate, main = "Histogram of Bachelor Rate",xlab= "Bachelor Rate", col = "red2", breaks = 15)
+hist(data_raw$HS.Rate, main = "Histogram of High School Graduation",xlab= "HS.Rate", col = "cadetblue2", breaks = 15)
+
+ggplot(data_raw, aes(X, Percap.Income)) + geom_point() + geom_label(aes(label = data_raw$State)) + ggtitle("PerCap Income By State") + xlab("States")
+ggplot(data_raw, aes(BA.Rate,Percap.Income)) + geom_line(color="aquamarine") + geom_point(color="cadetblue") + ggtitle("Income against Bachelor Rate") + theme(panel.background = element_rect(fill = "azure"))
+
+
+## Percap.Consum is significant, and BA.rate is significant under level 0.05
+IncomeVsAll.lm <- lm(data = data_raw, Percap.Income ~ Pop + Percap.Consum + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime)
+summary(IncomeVsAll.lm)
+
+
+## Confidence Region
+require(ellipse)
+plot(ellipse(IncomeVsAll.lm,c(3,6)),type="l",xlim=c(0.6,1.6),ylim=c(-50,700),main = "Confidence Area for BA.Rate and Percap.Consum", col="cornflowerblue",lwd=5)
+points(coef(IncomeVsAll.lm)[3], coef(IncomeVsAll.lm)[6], pch=19,col="cornflowerblue",lwd=5)
+abline(v=confint(IncomeVsAll.lm)[3,],lty=2,col="cornflowerblue",lwd=3)
+abline(h=confint(IncomeVsAll.lm)[6,],lty=2,col="cornflowerblue",lwd=3)
+
+## Non-constant variance test
+par(bg = "aliceblue")
+plot(fitted(IncomeVsAll.lm),residuals(IncomeVsAll.lm),xlab="Fitted",ylab="Residuals",col="blueviolet",lwd=2,main="Residual against Fitted Value") #residual against fitted value
+abline(h=0,col="blueviolet",lwd=2)
+
+par(bg = "aliceblue")
+plot(data_raw$HS.Rate,residuals(IncomeVsAll.lm),main = "Residual against HS.Rate",xlab="High School Graduation Rate",ylab="Residuals",col="blueviolet",lwd=2) #residual against HS.Rate
+abline(h=0,col="blueviolet",lwd=2)
+
+par(bg = "aliceblue")
+plot(data_raw$BA.Rate,residuals(IncomeVsAll.lm), main = "Residual against BA.Rate", xlab="Bachelor Rate",ylab="Residuals",col="blueviolet",lwd=2) #residual against BA.Rate
+abline(h=0,col="blueviolet",lwd=2)
+dev.off()
+
+## Box-Cox method
+## The plot shows that we may use -0.5 as the power to transform our response
+library(MASS)
+par(bg = "azure")
+boxcox(IncomeVsAll.lm,lambda = seq(-2, 1, 1/10), plotit = TRUE)
+
+par(bg = "lavender")
+IncomeVsAll_tran.lm <- lm(data = data_raw, Percap.Income^(-0.5) ~ Pop + Percap.Consum + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime)
+summary(IncomeVsAll_tran.lm)
+plot(fitted(IncomeVsAll_tran.lm),residuals(IncomeVsAll_tran.lm),xlab="Fitted",ylab="Residuals",main = "Power Transformation",col="lightslateblue",lwd=2) #residual against fitted value in new model,improved a little
+abline(h=0,col="lightslateblue",lwd=2)
+
+IncomeVsAll_tran2.lm <- lm(data = data_raw, log(Percap.Income) ~ Pop + Percap.Consum + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime)
+summary(IncomeVsAll_tran2.lm)
+plot(fitted(IncomeVsAll_tran2.lm),residuals(IncomeVsAll_tran2.lm),xlab="Fitted",ylab="Residuals",main = "Log Transformation",col="lightslateblue",lwd=2) #residual against fitted value in new model,improved a little
+abline(h=0,col="lightslateblue",lwd=2)
+
+## Normality
+qqnorm(residuals(IncomeVsAll.lm),ylab="Residuals",main="Normality Test",col="mediumpurple4")
+qqline(residuals(IncomeVsAll.lm),col="mediumpurple4",lwd=2)
+qqnorm(residuals(IncomeVsAll_tran.lm),ylab="Residuals",main="Normality Test After Power Transformation",col="mediumpurple4")
+qqline(residuals(IncomeVsAll_tran.lm),col="mediumpurple4",lwd=2) # Heavy tail issue is improved a little
+qqnorm(residuals(IncomeVsAll_tran2.lm),ylab="Residuals",main="Normality Test After Log Transformation",col="mediumpurple4")
+qqline(residuals(IncomeVsAll_tran2.lm),col="mediumpurple4",lwd=2) # Heavy tail issue is improved a little
+
+## Outlier
+par(bg = "lightsteelblue1")
+cook <- cooks.distance(IncomeVsAll.lm)
+halfnorm(cook,3,labs=data_raw$State,ylab="Cook's distances",main="Cook's Distance")
+cook_tran <- cooks.distance(IncomeVsAll_tran.lm)
+halfnorm(cook_tran,3,labs=data_raw$State,ylab="Cook's distances",main="Cook's Distance After Power Transformation")
+cook_tran2 <- cooks.distance(IncomeVsAll_tran2.lm)
+halfnorm(cook_tran2,3,labs=data_raw$State,ylab="Cook's distances",main="Cook's Distance After Log Transformation")
+```
+
+```{r, echo=TRUE} 
+# Huber's estimator as our robust estimation: 
+require(MASS)
+hb.lm <- rlm(data = data_raw, Percap.Income ~ Pop + Percap.Consum + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime)
+summary(hb.lm) # From the Huber's estimator we can see most of the coefficients are quite small, however, we need to calculate p-value to decide
+tv <- summary(hb.lm)$coeff[,3]
+pv <- 2*(1-pt(tv,43))
+pv < 0.05 # We have Percap.Consum and BA.Rate significant under this test
+
+wts <- hb.lm$w # Check weights
+names(wts) <- data_raw$State
+head(sort(wts),10) # We can see all the suspicious outliers are given less weight
+
+hb2.lm <- rlm(data = data_raw, Percap.Income^(-0.5) ~ Pop + Percap.Consum + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime)
+summary(hb2.lm) # From the Huber's estimator we can see most of the coefficients are quite small, however, we need to calculate p-value to decide
+tv2 <- summary(hb2.lm)$coeff[,3]
+pv2 <- 2*(1-pt(tv,43))
+pv2 < 0.05 # We have Percap.Consum significant under this test
+
+hb3.lm <- rlm(data = data_raw, log(Percap.Income) ~ Pop + Percap.Consum + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime)
+summary(hb3.lm) # From the Huber's estimator we can see most of the coefficients are quite small, however, we need to calculate p-value to decide
+tv3 <- summary(hb3.lm)$coeff[,3]
+pv3 <- 2*(1-pt(tv,43))
+pv3 < 0.05 # We have Percap.Consum and BA.Rate significant under this test
+
+wts3 <- hb3.lm$w # Check weights
+names(wts3) <- data_raw$State
+head(sort(wts3),10) # We can see all the suspicious outliers are given less weight
+
+# Least trimmed squares as our second robust estimation
+set.seed(123)
+lts.lm <- ltsreg(data = data_raw, Percap.Income ~ Pop + Percap.Consum + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime)
+coef(lts.lm) # Under this method, we have Consum, LifeExp, HS,Rate and BA.Rate with higher coeff
+bcoef <- matrix(0,1000,8)# bootstrap confidence interval
+for (i in 1:1000){
+  newy <- predict(lts.lm) + residuals(lts.lm)[sample(30,rep=T)]
+  brg <- ltsreg(newy  ~ Pop + Percap.Consum + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime, data_raw, nsamp="best")
+  bcoef[i,] <- brg$coef
+}
+colnames(bcoef) <- names(coef(lts.lm))
+apply(bcoef, 2, function(x) quantile(x, c(.025,.975)))
+
+par(bg = "mintcream")
+hist(bcoef[,"BA.Rate"],main = "Coefficient of BA.Rate",col="lightsteelblue",xlab = "Bachelor Rate")
+require(fBasics)
+densityPlot(as.timeSeries(bcoef[,"BA.Rate"]))
+hist(bcoef[,"Percap.Consum"],main = "Coefficient of Percap.Consum",col="lightsteelblue",xlab = "Percap.Consum")
+densityPlot(as.timeSeries(bcoef[,"Percap.Consum"]))
+hist(bcoef[,"LifeExp"],main = "Coefficient of LifeExp",col="lightsteelblue",xlab = "Life Expectancy")
+densityPlot(as.timeSeries(bcoef[,"LifeExp"]))
+# we plot the density function of the coefficients, we can see the mean values. More variables are significant under this method
+```
+
+
+```{r, echo=TRUE} 
+# Model Selection: let's choose the best model
+# Backward selection and level 10%
+summary(IncomeVsAll.lm) # Always remove predictor with largest p-value
+IncomeVsLess.lm1 <- lm(Percap.Income ~ Pop + Percap.Consum + LifeExp + BA.Rate + Area + Violent.Crime, data = data_raw)
+summary(IncomeVsLess.lm1)
+IncomeVsLess.lm2 <- lm(Percap.Income ~ Pop + Percap.Consum + LifeExp + BA.Rate + Violent.Crime, data = data_raw)
+summary(IncomeVsLess.lm2)
+IncomeVsLess.lm3 <- lm(Percap.Income ~ Pop + Percap.Consum + LifeExp + BA.Rate, data = data_raw)
+summary(IncomeVsLess.lm3)
+IncomeVsLess.lm4 <- lm(Percap.Income ~ Pop + Percap.Consum + BA.Rate, data = data_raw)
+summary(IncomeVsLess.lm4) # We end up with 3 predictors: Population, Consumption, and Bachelor Rate
+
+# Select using Information Criterion
+require(leaps)
+step(IncomeVsAll.lm, direction = c("both"))
+step(IncomeVsAll_tran.lm,direction = c("both"))
+step(IncomeVsAll_tran2.lm,direction = c("both"))
+incomFinal.lm <- lm(Percap.Income ~ Pop + Percap.Consum + BA.Rate, data = data_raw) 
+summary(incomFinal.lm) # same result as backward selection
+
+## Delete Consumption
+noCon.lm <- lm(Percap.Income ~ Pop + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime, data = data_raw)
+summary(noCon.lm)
+step(noCon.lm,direction = c("both"))
+
+noCon2.lm <- lm(Percap.Income^(-0.5) ~ Pop + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime, data = data_raw)
+summary(noCon2.lm)
+step(noCon2.lm,direction = c("both"))
+
+noCon3.lm <- lm(log(Percap.Income) ~ Pop + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime, data = data_raw)
+summary(noCon3.lm)
+step(noCon3.lm,direction = c("both"))
+
+## Eliminate population factor from Area and Violent Crime
+data_modi <- data_raw %>%
+  mutate(Violent.Crime=1000*Violent.Crime/Pop) %>%
+  mutate(Area=1000*Area/Pop)
+
+noConPop.lm <- lm(Percap.Income ~ Pop + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime, data = data_modi)
+summary(noConPop.lm)
+step(noConPop.lm,direction = c("both"))
+
+noConPop2.lm <- lm(Percap.Income^(-0.5) ~ Pop + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime, data = data_modi)
+summary(noConPop2.lm)
+step(noConPop2.lm,direction = c("both"))
+
+noConPop3.lm <- lm(log(Percap.Income) ~ Pop + LifeExp + HS.Rate + BA.Rate + Area + Violent.Crime, data = data_modi)
+summary(noConPop3.lm)
+step(noConPop3.lm,direction = c("both"))
+
+## Final Model
+noConFinal1.lm <- lm(Percap.Income^(-0.5) ~ Pop + HS.Rate + BA.Rate + Area, data = data_modi)
+summary(noConFinal1.lm)
+noConFinal2.lm <- lm(log(Percap.Income) ~ Pop + HS.Rate + BA.Rate + Area, data = data_modi)
+summary(noConFinal2.lm)
+```
+
+
+```{r, echo=TRUE} 
+# Extended analysis
+CrimeVsAll.lm <- lm(Violent.Crime ~ Pop + Percap.Consum + Percap.Income + HS.Rate + BA.Rate + Area + LifeExp, data = data_raw)
+summary(CrimeVsAll.lm)
+step(CrimeVsAll.lm)
+criFinal.lm <- lm(Violent.Crime ~ Pop + HS.Rate + Area, data = data_raw)
+summary(criFinal.lm)
+
+LifeVsAll.lm <- lm(LifeExp ~ Pop + Percap.Consum + Percap.Income + HS.Rate + BA.Rate + Area + Violent.Crime, data = data_raw)
+summary(LifeVsAll.lm)
+step(LifeVsAll.lm)
+lifeFinal.lm <- lm(LifeExp ~ Pop + Percap.Consum + HS.Rate, data = data_raw)
+summary(lifeFinal.lm)
+dev.off()
+```
+
+
